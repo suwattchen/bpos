@@ -1,0 +1,33 @@
+# Cloudflare Tunnel Configuration
+# สำหรับ expose POS system ผ่าน Cloudflare Tunnel
+
+tunnel: YOUR_TUNNEL_ID_HERE
+credentials-file: /root/.cloudflared/YOUR_TUNNEL_ID.json
+
+ingress:
+  # Frontend (React App)
+  - hostname: pos.yourdomain.com
+    service: http://frontend:80
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
+
+  # Backend API
+  - hostname: api.pos.yourdomain.com
+    service: http://backend:3001
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
+
+  # MinIO Console (Admin only)
+  - hostname: storage.pos.yourdomain.com
+    service: http://minio:9001
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
+
+  # Catch-all rule (required)
+  - service: http_status:404
+
+# Logging
+loglevel: info
