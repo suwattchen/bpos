@@ -56,11 +56,11 @@ router.post(
   upload.array('images', 10),
   async (req: AuthRequest, res: Response) => {
     try {
-      if (!req.files || (req.files as Express.Multer.File[]).length === 0) {
+      if (!req.files || (req.files as any[]).length === 0) {
         throw new AppError('No files uploaded', 400);
       }
 
-      const files = req.files as Express.Multer.File[];
+      const files = req.files as any[];
       const results = await Promise.all(
         files.map((file) => storage.uploadFile(file, 'products'))
       );

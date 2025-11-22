@@ -7,6 +7,10 @@ import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 
+// Initialize event handlers BEFORE routes
+import { initInventoryHandlers } from './modules/inventory';
+import { initRecommendationsHandlers } from './modules/recommendations';
+
 // Routes
 import authRoutes from './routes/auth';
 import productsRoutes from './routes/products';
@@ -16,8 +20,18 @@ import customersRoutes from './routes/customers';
 import categoriesRoutes from './routes/categories';
 import uploadRoutes from './routes/upload';
 import healthRoutes from './routes/health';
+import recommendationsRoutes from './routes/recommendations';
+import salesRoutes from './routes/sales';
 
 const app: Application = express();
+
+// Initialize event-driven architecture
+if (config.nodeEnv !== 'test') {
+  console.log('🎯 Initializing event-driven architecture...');
+  initInventoryHandlers();
+  initRecommendationsHandlers();
+  console.log('✅ Event handlers initialized');
+}
 
 // Security middleware
 app.use(helmet());
@@ -47,6 +61,8 @@ app.use('/transactions', transactionsRoutes);
 app.use('/customers', customersRoutes);
 app.use('/categories', categoriesRoutes);
 app.use('/upload', uploadRoutes);
+app.use('/recommendations', recommendationsRoutes);
+app.use('/sales', salesRoutes);
 
 // Error handling
 app.use(notFound);

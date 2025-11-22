@@ -10,6 +10,12 @@ export interface AuthRequest extends Request {
     tenantId: string;
     role: string;
   };
+  headers: any;
+  params: any;
+  query: any;
+  body: any;
+  file?: any;
+  files?: any;
 }
 
 export const authenticate = async (

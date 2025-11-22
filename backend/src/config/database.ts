@@ -58,3 +58,6 @@ class Database {
 }
 
 export const db = new Database();
+
+const pool = new Pool(config.database);
+export default pool;

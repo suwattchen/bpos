@@ -47,7 +47,7 @@ export class StorageService {
   }
 
   async uploadFile(
-    file: Express.Multer.File,
+    file: any,
     folder: string = 'uploads'
   ): Promise<{ fileName: string; url: string }> {
     try {
