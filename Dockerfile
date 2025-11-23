@@ -5,8 +5,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Build frontend with provided API URL (falls back to localhost)
-ARG VITE_API_URL=http://localhost:3001
+# Build frontend with API URL for proxy routing
+ARG VITE_API_URL=/api
 ENV VITE_API_URL=${VITE_API_URL}
 
 COPY . .
