@@ -1,17 +1,14 @@
-# 🏪 Multi-Tenant POS System
+# 🏪 Multi-Tenant POS System (Self-Hosted)
 
-A production-ready Point of Sale system with multi-tenant support, built with React, TypeScript, Node.js, and PostgreSQL.
+A production-ready Point of Sale system with multi-tenant support, built for self-hosting with React, TypeScript, Node.js, and PostgreSQL.
 
 ## 📋 Table of Contents
 
 - [Features](#features)
 - [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
-- [Development Setup](#development-setup)
+- [Configuration](#configuration)
 - [Production Deployment](#production-deployment)
-- [Testing](#testing)
-- [Security](#security)
 - [API Documentation](#api-documentation)
 - [Troubleshooting](#troubleshooting)
 
@@ -26,152 +23,343 @@ A production-ready Point of Sale system with multi-tenant support, built with Re
 - ✅ **Customer Management** - Customer profiles with loyalty points and purchase history
 - ✅ **Sales Analytics** - Daily, weekly, monthly reports with revenue tracking
 - ✅ **Multi-Tenant** - Complete data isolation between tenants
-- ✅ **Offline Mode** - PWA with offline capability and sync
+- ✅ **Offline Mode** - PWA with offline capability
 
 ### Technical Features
+- ✅ **Self-Hosted** - 100% self-contained, no external dependencies
 - ✅ **Authentication** - JWT-based auth with bcrypt password hashing
 - ✅ **File Storage** - S3-compatible storage with MinIO
 - ✅ **Database** - PostgreSQL with Row Level Security (RLS)
 - ✅ **API** - RESTful API with comprehensive error handling
 - ✅ **Docker** - Full containerization for easy deployment
 - ✅ **TypeScript** - Type-safe frontend and backend
+- ✅ **Nginx Proxy Manager** - Reverse proxy with SSL/TLS support
+
+---
+
+## 🏗 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Nginx Proxy Manager                       │
+│                  (Port 80, 443, Admin 81)                   │
+└────────────────────────┬───────────────────────────────────┘
+                         │
+         ┌───────────────┴───────────────┐
+         │                               │
+    ┌────▼─────┐                   ┌────▼─────┐
+    │ Frontend │                   │ Backend  │
+    │  (React) │                   │ (Node.js)│
+    │  Port 80 │                   │ Port 3001│
+    └──────────┘                   └────┬─────┘
+                                        │
+         ┌──────────────┬───────────────┼──────────────┐
+         │              │               │              │
+    ┌────▼────┐   ┌────▼────┐    ┌────▼────┐   ┌────▼────┐
+    │PostgreSQL│   │  Redis  │    │  MinIO  │   │  Logs   │
+    │Port 5432│   │Port 6379│    │Port 9000│   │ Volume  │
+    └─────────┘   └─────────┘    └─────────┘   └─────────┘
+```
+
+**Key Points:**
+- Frontend → Backend REST API (no direct database access)
+- Backend handles all business logic and database operations
+- All services run in isolated Docker containers
+- Data persisted in Docker volumes
 
 ---
 
 ## 🚀 Quick Start
 
-### Option 1: Development with Supabase (5 minutes)
+### Prerequisites
+
+- Docker & Docker Compose
+- 2GB RAM minimum
+- 10GB disk space
+
+### Installation
 
 ```bash
-# 1. Clone and install
+# 1. Clone repository
 git clone <repository-url>
 cd pos-system
-npm install
 
-# 2. Setup Supabase
-# - Go to https://supabase.com
-# - Create new project
-# - Run database_setup.sql in SQL Editor
-
-# 3. Configure environment
+# 2. Configure environment
 cp .env.example .env
-# Add: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 
-# 4. Start
-npm run dev
-```
+# IMPORTANT: Edit .env and change ALL passwords!
+nano .env
 
-### Option 2: Self-Hosted with Docker (15 minutes)
+# 3. Start all services
+docker compose up -d
 
-```bash
-# 1. Setup
-cp .env.selfhost .env
-# IMPORTANT: Change all passwords!
+# 4. Wait for services to be ready (30-60 seconds)
+docker compose logs -f
 
-# 2. Start services
-docker-compose up -d
+# 5. Initialize database
+docker exec -i pos-postgres psql -U pos_admin -d pos_system < database/init/01-init.sql
 
-# 3. Initialize database
-sleep 30
-docker exec -i pos-postgres psql -U pos_admin -d pos_system < database_setup.sql
+# 6. Create admin user
+./scripts/create-admin.sh admin@example.com SecurePassword123
 
-# 4. Verify
-./scripts/test-deployment.sh
-
-# 5. Access http://localhost:3000
+# 7. Access the application
+# http://localhost (or your domain)
+# Nginx Proxy Manager: http://localhost:81
+# Default: admin@example.com / changeme
 ```
 
 ---
 
-## 🔐 Security
+## ⚙️ Configuration
 
-### ⚠️ REQUIRED: Change Default Passwords
+### Environment Variables
 
-```bash
-# Generate secure values
-openssl rand -base64 32  # For passwords
-openssl rand -base64 48  # For JWT_SECRET
-
-# Update .env:
-DB_PASSWORD=<generated-password>
-REDIS_PASSWORD=<generated-password>
-MINIO_SECRET_KEY=<generated-password>
-JWT_SECRET=<generated-secret>
-```
-
-The system will **refuse to start** with default values in production.
-
----
-
-## 🧪 Testing
+Edit `.env` file:
 
 ```bash
+# Database
+DB_NAME=pos_system
+DB_USER=pos_admin
+DB_PASSWORD=<change-this-secure-password>
+
+# Backend API
+PORT=3001
+JWT_SECRET=<change-this-min-32-chars-secret>
+JWT_EXPIRATION=7d
+CORS_ORIGIN=http://localhost:3000
+
+# Redis Cache
+REDIS_PASSWORD=<change-this-password>
+
+# MinIO Object Storage
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=<change-this-password>
+
 # Frontend
-npm test                    # Run tests
-npm run test:coverage       # With coverage
-npm run test:e2e            # E2E tests
-
-# Backend
-cd backend
-npm test                    # Run tests
-npm run test:integration    # Integration tests
+VITE_API_URL=http://localhost:3001
 ```
 
-**CI/CD:** GitHub Actions runs tests on every push/PR
+### Generate Secure Passwords
+
+```bash
+# Generate random passwords
+openssl rand -base64 32  # For DB_PASSWORD, REDIS_PASSWORD, MINIO_SECRET_KEY
+openssl rand -base64 48  # For JWT_SECRET
+```
+
+### ⚠️ Security Requirements
+
+**BEFORE PRODUCTION:**
+1. Change ALL default passwords
+2. Use strong JWT_SECRET (min 32 characters)
+3. Enable HTTPS via Nginx Proxy Manager
+4. Configure firewall rules
+5. Set up regular backups
+
+---
+
+## 🌐 Production Deployment
+
+### Using Nginx Proxy Manager (Recommended)
+
+1. Access Nginx Proxy Manager at `http://your-server:81`
+2. Default login: `admin@example.com` / `changeme`
+3. Add Proxy Host:
+   - Domain: `your-domain.com`
+   - Forward to: `frontend` port `80`
+4. Add SSL Certificate (Let's Encrypt)
+5. Configure DNS to point to your server
+
+### Port Configuration
+
+- **80** - HTTP (handled by Nginx Proxy Manager)
+- **443** - HTTPS (handled by Nginx Proxy Manager)
+- **81** - Nginx Proxy Manager Admin Panel
+- **3001** - Backend API (internal only)
+- **5432** - PostgreSQL (internal only)
+- **9000** - MinIO (internal only)
+
+### Health Checks
+
+```bash
+# Check all services
+docker compose ps
+
+# View logs
+docker compose logs -f backend
+docker compose logs -f frontend
+
+# Test backend health
+curl http://localhost:3001/health
+
+# Test frontend
+curl http://localhost
+```
 
 ---
 
 ## 📚 API Documentation
 
-### Quick Example
+### Authentication
 
 ```bash
 # Signup
-curl -X POST http://localhost:3001/auth/signup \
+curl -X POST http://localhost:3001/api/auth/signup \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"Test123456"}'
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePassword123"
+  }'
 
-# Response: { "token": "...", "user": {...} }
+# Login
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePassword123"
+  }'
 
-# Use token for authenticated requests
-curl http://localhost:3001/products \
-  -H "Authorization: Bearer <token>"
+# Response: { "token": "...", "user": {...}, "tenantId": "...", "role": "..." }
 ```
 
-**Full API Docs:** See [docs/API.md](./docs/API.md)
+### Using API with Token
+
+```bash
+# Get all products
+curl http://localhost:3001/api/products \
+  -H "Authorization: Bearer <your-token>"
+
+# Create product
+curl -X POST http://localhost:3001/api/products \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Product Name",
+    "sku": "SKU001",
+    "selling_price": 100,
+    "cost_price": 50
+  }'
+```
+
+### API Endpoints
+
+- `POST /api/auth/signup` - Create account
+- `POST /api/auth/login` - Login
+- `GET /api/auth/me` - Get current user
+- `GET /api/products` - List products
+- `POST /api/products` - Create product
+- `GET /api/inventory` - List inventory
+- `POST /api/inventory/update` - Update stock
+- `GET /api/customers` - List customers
+- `POST /api/transactions` - Create transaction
+- `GET /api/sales/summary` - Sales reports
 
 ---
 
 ## 🐛 Troubleshooting
 
 ### Services won't start
+
 ```bash
-docker-compose logs
-docker-compose restart
+# Check logs
+docker compose logs
+
+# Restart services
+docker compose restart
+
+# Full reset
+docker compose down
+docker compose up -d
 ```
 
-### Can't connect to database
+### Database connection error
+
 ```bash
+# Check PostgreSQL is running
+docker compose ps postgres
+
+# Connect to database
 docker exec -it pos-postgres psql -U pos_admin -d pos_system
-# Verify .env credentials
+
+# Verify credentials in .env
 ```
 
-### Frontend errors
+### Frontend can't connect to backend
+
 ```bash
 # Check VITE_API_URL in .env
-# Should be: http://localhost:3001
+# Should match backend URL: http://localhost:3001
+
+# Rebuild frontend
+docker compose build frontend
+docker compose up -d frontend
 ```
 
-**More:** [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)
+### MinIO storage issues
+
+```bash
+# Access MinIO console
+# http://localhost:9002 (or port in docker-compose.yml)
+
+# Verify bucket exists
+docker exec pos-minio mc ls local/
+
+# Create bucket if needed
+docker exec pos-minio mc mb local/product-images
+```
 
 ---
 
-## 📖 Documentation
+## 📖 Additional Documentation
 
-- [Architecture](./ARCHITECTURE.md) - System design
-- [Deployment Guide](./FINAL_DEPLOYMENT_GUIDE.md) - Production setup
-- [API Reference](./docs/API.md) - Complete API docs
-- [Contributing](./CONTRIBUTING.md) - Development guide
+- [GETTING_STARTED.md](./GETTING_STARTED.md) - Detailed setup guide
+- [SELF_HOST_GUIDE.md](./SELF_HOST_GUIDE.md) - Self-hosting best practices
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture details
+- [backend/TESTING_GUIDE.md](./backend/TESTING_GUIDE.md) - Testing guide
+
+---
+
+## 🔧 Development
+
+```bash
+# Frontend development
+npm install
+npm run dev
+
+# Backend development
+cd backend
+npm install
+npm run dev
+
+# Build for production
+npm run build
+cd backend && npm run build
+```
+
+---
+
+## 📊 Monitoring
+
+### View Logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f backend
+docker compose logs -f postgres
+```
+
+### Database Backups
+
+```bash
+# Backup
+docker exec pos-postgres pg_dump -U pos_admin pos_system > backup.sql
+
+# Restore
+docker exec -i pos-postgres psql -U pos_admin -d pos_system < backup.sql
+```
 
 ---
 
@@ -181,5 +369,4 @@ MIT License
 
 ---
 
-**Status:** ✅ Production Ready | **Version:** 1.0.0
-# bpos
+**Status:** ✅ Production Ready (Self-Hosted) | **Version:** 2.0.0 | **Architecture:** 100% Self-Contained

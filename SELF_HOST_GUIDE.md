@@ -1,819 +1,556 @@
-# 🐳 Self-Hosting Guide - Ubuntu + Docker + Cloudflare Tunnel
+# 🏠 Self-Hosting Guide - POS System
 
-**Status:** ✅ **COMPLETE - Ready for Self-Hosting**
+Comprehensive guide for deploying and maintaining a self-hosted POS system in production.
 
-Last Updated: 2025-11-21
+## 📖 Table of Contents
+
+- [Overview](#overview)
+- [Hardware Requirements](#hardware-requirements)
+- [Installation](#installation)
+- [Security Hardening](#security-hardening)
+- [SSL/TLS Configuration](#ssltls-configuration)
+- [Backup & Recovery](#backup--recovery)
+- [Monitoring](#monitoring)
+- [Maintenance](#maintenance)
+- [Scaling](#scaling)
 
 ---
 
 ## 🎯 Overview
 
-Deploy POS System on your own Ubuntu server with:
-- **PostgreSQL** - Full-featured database
-- **Redis** - Session and caching
-- **MinIO** - S3-compatible object storage
-- **Docker** - Containerized deployment
-- **Cloudflare Tunnel** - Secure internet access (no open ports!)
+This system is **100% self-hosted** with no external dependencies:
+
+```
+Frontend (React) → Backend API (Node.js) → PostgreSQL Database
+                 ↓
+           MinIO (Storage) + Redis (Cache)
+```
+
+**Key Benefits:**
+- Complete data ownership
+- No subscription fees
+- Full control over infrastructure
+- Privacy compliant (GDPR, HIPAA ready)
+- Offline capability
 
 ---
 
-## 📋 Prerequisites
+## 💻 Hardware Requirements
 
-### Server Requirements
+### Minimum (Testing/Development)
+- **CPU:** 2 cores
+- **RAM:** 2GB
+- **Disk:** 20GB SSD
+- **Network:** 10 Mbps
 
-**Minimum:**
-- Ubuntu 20.04 or 22.04 LTS
-- 2GB RAM
-- 2 CPU cores
-- 20GB disk space
-- Internet connection
+### Recommended (Production <100 users)
+- **CPU:** 4 cores
+- **RAM:** 8GB
+- **Disk:** 100GB SSD (RAID 1 recommended)
+- **Network:** 100 Mbps
 
-**Recommended:**
-- Ubuntu 22.04 LTS
-- 4GB RAM
-- 4 CPU cores
-- 50GB SSD
-- 100 Mbps internet
-
-### What You Need
-
-1. ✅ Ubuntu server (local or cloud VPS)
-2. ✅ SSH access with sudo privileges
-3. ✅ Domain name (for Cloudflare Tunnel)
-4. ✅ Cloudflare account (free tier OK)
+### Enterprise (Production >100 users)
+- **CPU:** 8+ cores
+- **RAM:** 16GB+
+- **Disk:** 500GB+ SSD with RAID 10
+- **Network:** 1 Gbps
+- **Redundancy:** Load balancer + Multiple instances
 
 ---
 
-## 🚀 Quick Deploy (30 Minutes)
+## 🚀 Installation
 
-### Step 1: Clone Repository
-
-```bash
-# SSH to your Ubuntu server
-ssh user@your-server-ip
-
-# Clone project
-git clone https://github.com/your-repo/pos-system.git
-cd pos-system
-```
-
-### Step 2: Configure Environment
+### Step 1: Prepare Server
 
 ```bash
-# Copy environment template
-cp .env.selfhost .env
-
-# Edit configuration
-nano .env
-```
-
-**Update these values:**
-
-```bash
-# Database
-DB_PASSWORD=your_secure_database_password_here
-
-# Redis
-REDIS_PASSWORD=your_secure_redis_password_here
-
-# MinIO
-MINIO_SECRET_KEY=your_secure_minio_password_here
-
-# JWT (generate with: openssl rand -base64 32)
-JWT_SECRET=your_32_character_random_jwt_secret_here
-
-# CORS (your domain)
-CORS_ORIGIN=https://pos.yourdomain.com,https://api.pos.yourdomain.com
-
-# Frontend API URL
-VITE_API_URL=https://api.pos.yourdomain.com
-```
-
-### Step 3: Run Deployment Script
-
-```bash
-# Make executable
-chmod +x deploy-ubuntu.sh
-
-# Run (will ask for sudo)
-sudo ./deploy-ubuntu.sh
-```
-
-**Script will:**
-1. ✅ Check system requirements
-2. ✅ Install Docker & Docker Compose
-3. ✅ Configure environment
-4. ✅ Setup Cloudflare Tunnel (optional)
-5. ✅ Pull Docker images
-6. ✅ Build and start containers
-7. ✅ Initialize database
-8. ✅ Verify installation
-
-**Duration: ~15-20 minutes** (depending on internet speed)
-
-### Step 4: Setup Cloudflare Tunnel
-
-**Install cloudflared:**
-
-```bash
-# Download
-wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-
-# Install
-sudo dpkg -i cloudflared-linux-amd64.deb
-
-# Login (opens browser)
-cloudflared tunnel login
-```
-
-**Create Tunnel:**
-
-```bash
-# Create
-cloudflared tunnel create pos-system
-
-# Note the Tunnel ID (looks like: a1b2c3d4-e5f6-7890-abcd-ef1234567890)
-
-# List tunnels
-cloudflared tunnel list
-```
-
-**Configure Tunnel:**
-
-```bash
-# Edit config
-nano cloudflared-config.yml
-```
-
-Update with your tunnel ID and domain:
-
-```yaml
-tunnel: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-credentials-file: /root/.cloudflared/a1b2c3d4-e5f6-7890-abcd-ef1234567890.json
-
-ingress:
-  - hostname: pos.yourdomain.com
-    service: http://frontend:80
-
-  - hostname: api.pos.yourdomain.com
-    service: http://backend:3001
-
-  - service: http_status:404
-```
-
-**Setup DNS:**
-
-```bash
-# Add DNS records
-cloudflared tunnel route dns pos-system pos.yourdomain.com
-cloudflared tunnel route dns pos-system api.pos.yourdomain.com
-```
-
-**Start Tunnel:**
-
-```bash
-# Restart docker compose to include cloudflared
-docker compose down
-docker compose up -d
-```
-
-### Step 5: Verify
-
-**Check Services:**
-
-```bash
-# View logs
-docker compose logs -f
-
-# Check status
-docker compose ps
-
-# Should show all services as "Up"
-```
-
-**Test URLs:**
-
-```bash
-# Local
-curl http://localhost:3000
-curl http://localhost:3001/health
-
-# Public (after Cloudflare setup)
-curl https://pos.yourdomain.com
-curl https://api.pos.yourdomain.com/health
-```
-
-**Access System:**
-
-Open browser: `https://pos.yourdomain.com`
-
-**Default Admin:**
-- Email: `admin@pos.local`
-- Password: `admin123`
-- **⚠️ CHANGE IMMEDIATELY!**
-
----
-
-## 🔧 Manual Installation
-
-### 1. Install Docker
-
-```bash
-# Update packages
-sudo apt-get update
-
-# Install prerequisites
-sudo apt-get install -y ca-certificates curl gnupg lsb-release
-
-# Add Docker GPG key
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-# Setup repository
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+# Update system
+sudo apt update && sudo apt upgrade -y
 
 # Install Docker
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
 
-# Start Docker
-sudo systemctl start docker
-sudo systemctl enable docker
+# Install Docker Compose
+sudo apt install docker-compose-plugin
 
 # Verify
 docker --version
-```
-
-### 2. Install Docker Compose
-
-```bash
-# Usually installed with Docker
 docker compose version
-
-# If not, install separately
-sudo apt-get install -y docker-compose
 ```
 
-### 3. Configure Environment
+### Step 2: Clone & Configure
 
 ```bash
-# Copy template
-cp .env.selfhost .env
+# Clone repository
+git clone https://github.com/yourusername/pos-system.git
+cd pos-system
 
-# Generate secure passwords
-echo "DB_PASSWORD=$(openssl rand -base64 24)"
-echo "REDIS_PASSWORD=$(openssl rand -base64 24)"
-echo "MINIO_SECRET_KEY=$(openssl rand -base64 24)"
-echo "JWT_SECRET=$(openssl rand -base64 32)"
+# Setup environment
+cp .env.example .env
 
-# Edit .env with generated passwords
-nano .env
+# Generate secure secrets
+export DB_PASS=$(openssl rand -base64 32)
+export REDIS_PASS=$(openssl rand -base64 32)
+export MINIO_PASS=$(openssl rand -base64 32)
+export JWT_SECRET=$(openssl rand -base64 48)
+
+# Update .env automatically
+sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=$DB_PASS/" .env
+sed -i "s/REDIS_PASSWORD=.*/REDIS_PASSWORD=$REDIS_PASS/" .env
+sed -i "s/MINIO_SECRET_KEY=.*/MINIO_SECRET_KEY=$MINIO_PASS/" .env
+sed -i "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
+
+# Update API URL for production
+sed -i "s|VITE_API_URL=.*|VITE_API_URL=https://api.yourdomain.com|" .env
 ```
 
-### 4. Start Services
+### Step 3: Deploy
 
 ```bash
-# Pull images
-docker compose pull
-
-# Build and start
-docker compose up -d --build
-
-# View logs
-docker compose logs -f
-```
-
-### 5. Verify Database
-
-```bash
-# Connect to database
-docker exec -it pos-postgres psql -U pos_admin -d pos_system
-
-# Check tables
-\dt
-
-# Should show:
-# - tenants
-# - tenant_users
-# - categories
-# - products
-# - inventory
-# - customers
-# - transactions
-# - transaction_items
-# - auth.users
-
-# Exit
-\q
-```
-
----
-
-## 📊 Container Architecture
-
-```
-┌─────────────────────────────────────────────┐
-│         Cloudflare Tunnel                   │
-│    (cloudflared container)                  │
-└──────────────┬──────────────────────────────┘
-               │
-               ├─────────┬──────────┬──────────┐
-               │         │          │          │
-         ┌─────▼────┐ ┌──▼──────┐ ┌▼─────────┐│
-         │ Frontend │ │ Backend │ │  MinIO   ││
-         │  (Nginx) │ │ (Node)  │ │ (S3)     ││
-         │  :3000   │ │  :3001  │ │ :9000/01 ││
-         └──────────┘ └────┬────┘ └──────────┘│
-                           │                   │
-                      ┌────▼────┐   ┌─────────▼┐
-                      │Postgres │   │  Redis   │
-                      │  :5432  │   │  :6379   │
-                      └─────────┘   └──────────┘
-```
-
-**Containers:**
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| frontend | 3000 | React app (Nginx) |
-| backend | 3001 | Node.js API |
-| postgres | 5432 | PostgreSQL database |
-| redis | 6379 | Session/cache |
-| minio | 9000/9001 | Object storage |
-| cloudflared | - | Tunnel to internet |
-
----
-
-## 🔒 Security Setup
-
-### 1. Change Default Passwords
-
-**Admin Account:**
-
-```bash
-# Login to system
-# Go to Settings → Change Password
-```
-
-**Database:**
-
-```bash
-# Edit .env
-nano .env
-
-# Update DB_PASSWORD
-DB_PASSWORD=NewSecurePassword123!
-
-# Recreate containers
-docker compose down
+# Start services
 docker compose up -d
-```
 
-### 2. Firewall Configuration
+# Wait for services
+sleep 60
 
-**With Cloudflare Tunnel (Recommended):**
-
-```bash
-# Block all incoming except SSH
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp
-sudo ufw enable
-
-# All traffic goes through Cloudflare Tunnel
-# No need to open ports 80/443!
-```
-
-**Without Cloudflare Tunnel:**
-
-```bash
-sudo ufw allow 22/tcp   # SSH
-sudo ufw allow 80/tcp   # HTTP
-sudo ufw allow 443/tcp  # HTTPS
-sudo ufw enable
-```
-
-### 3. Setup Automatic Updates
-
-```bash
-# Install unattended-upgrades
-sudo apt-get install -y unattended-upgrades
-
-# Configure
-sudo dpkg-reconfigure -plow unattended-upgrades
-```
-
-### 4. Enable Docker Container Restart
-
-```bash
-# Already configured in docker-compose.yml:
-# restart: unless-stopped
+# Initialize database
+docker exec -i pos-postgres psql -U pos_admin -d pos_system < database/init/01-init.sql
 
 # Verify
 docker compose ps
-```
-
-### 5. Regular Backups
-
-**Database Backup:**
-
-```bash
-# Create backup directory
-mkdir -p ~/backups
-
-# Manual backup
-docker exec pos-postgres pg_dump -U pos_admin pos_system > ~/backups/pos_backup_$(date +%Y%m%d_%H%M%S).sql
-
-# Automated daily backup (crontab)
-crontab -e
-
-# Add line:
-0 2 * * * docker exec pos-postgres pg_dump -U pos_admin pos_system > ~/backups/pos_backup_$(date +\%Y\%m\%d).sql
-
-# Keep only last 7 days
-0 3 * * * find ~/backups -name "pos_backup_*.sql" -mtime +7 -delete
-```
-
-**Full System Backup:**
-
-```bash
-# Backup volumes
-docker run --rm \
-  -v pos_postgres_data:/data \
-  -v $(pwd)/backups:/backup \
-  alpine tar czf /backup/postgres_data_$(date +%Y%m%d).tar.gz -C /data .
-
-docker run --rm \
-  -v pos_minio_data:/data \
-  -v $(pwd)/backups:/backup \
-  alpine tar czf /backup/minio_data_$(date +%Y%m%d).tar.gz -C /data .
+./scripts/test-deployment.sh
 ```
 
 ---
 
-## 🛠️ Maintenance
+## 🔒 Security Hardening
 
-### View Logs
+### 1. Firewall Configuration
 
 ```bash
-# All services
-docker compose logs -f
+# Install UFW (Ubuntu)
+sudo apt install ufw
 
-# Specific service
-docker compose logs -f backend
-docker compose logs -f postgres
+# Allow SSH (adjust port if changed)
+sudo ufw allow 22/tcp
 
-# Last 100 lines
-docker compose logs --tail=100
+# Allow HTTP/HTTPS
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+# Allow NPM admin (restrict to your IP)
+sudo ufw allow from YOUR_IP_ADDRESS to any port 81
+
+# Enable firewall
+sudo ufw enable
+sudo ufw status
 ```
 
-### Restart Services
+### 2. Fail2Ban Setup
 
 ```bash
-# Restart all
-docker compose restart
+# Install fail2ban
+sudo apt install fail2ban
 
-# Restart specific service
-docker compose restart backend
+# Configure
+sudo nano /etc/fail2ban/jail.local
+```
 
-# Stop all
-docker compose stop
+Add:
+```ini
+[sshd]
+enabled = true
+port = 22
+maxretry = 3
+bantime = 3600
 
-# Start all
-docker compose start
+[nginx-limit-req]
+enabled = true
+port = http,https
+logpath = /var/log/nginx/error.log
+maxretry = 5
+```
 
-# Stop and remove (keeps data)
+```bash
+# Restart
+sudo systemctl restart fail2ban
+sudo fail2ban-client status
+```
+
+### 3. Secure Docker
+
+```bash
+# Limit container resources
+# Edit docker-compose.yml:
+```
+
+```yaml
+services:
+  backend:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          memory: 512M
+```
+
+### 4. Database Security
+
+```bash
+# Backup pg_hba.conf
+docker exec pos-postgres cat /var/lib/postgresql/data/pg_hba.conf > pg_hba.backup
+
+# Restrict connections (only from Docker network)
+# Already configured in Docker setup
+```
+
+### 5. Change Default Ports (Optional)
+
+Edit `docker-compose.yml`:
+```yaml
+services:
+  npm:
+    ports:
+      - "8080:80"    # Change from 80
+      - "8443:443"   # Change from 443
+      - "8081:81"    # Change from 81
+```
+
+---
+
+## 🔐 SSL/TLS Configuration
+
+### Using Nginx Proxy Manager (Recommended)
+
+1. **Access NPM Admin:**
+   ```
+   http://your-server:81
+   Default: admin@example.com / changeme
+   ```
+
+2. **Change Admin Password:**
+   - Users → Edit → Change Password
+   - Use strong password (20+ characters)
+
+3. **Add SSL Certificate:**
+   - SSL Certificates → Add SSL Certificate
+   - Choose: Let's Encrypt
+   - Domain: yourdomain.com
+   - Email: your@email.com
+   - Agree to Terms
+   - Save
+
+4. **Add Proxy Host:**
+   - Proxy Hosts → Add Proxy Host
+   - Domain: yourdomain.com
+   - Forward to: frontend:80
+   - Cache Assets: ON
+   - Block Common Exploits: ON
+   - WebSocket Support: ON
+   - SSL: Select your certificate
+   - Force SSL: ON
+   - HTTP/2 Support: ON
+   - HSTS Enabled: ON
+
+5. **Add API Proxy:**
+   - Domain: api.yourdomain.com
+   - Forward to: backend:3001
+   - Same SSL settings
+
+### Manual SSL (Alternative)
+
+```bash
+# Install Certbot
+sudo apt install certbot
+
+# Get certificate
+sudo certbot certonly --standalone -d yourdomain.com -d api.yourdomain.com
+
+# Certificates will be in:
+# /etc/letsencrypt/live/yourdomain.com/
+
+# Mount in docker-compose.yml:
+volumes:
+  - /etc/letsencrypt:/etc/letsencrypt:ro
+```
+
+---
+
+## 💾 Backup & Recovery
+
+### Automated Backup Script
+
+Create `/opt/pos-backup/backup.sh`:
+
+```bash
+#!/bin/bash
+BACKUP_DIR="/opt/pos-backups"
+DATE=$(date +%Y%m%d_%H%M%S)
+RETENTION_DAYS=30
+
+# Create backup directory
+mkdir -p $BACKUP_DIR
+
+# Backup database
+docker exec pos-postgres pg_dump -U pos_admin pos_system | \
+  gzip > $BACKUP_DIR/database_$DATE.sql.gz
+
+# Backup MinIO data
+docker exec pos-minio tar czf - /data | \
+  cat > $BACKUP_DIR/minio_$DATE.tar.gz
+
+# Backup configuration
+tar czf $BACKUP_DIR/config_$DATE.tar.gz .env docker-compose.yml
+
+# Remove old backups
+find $BACKUP_DIR -type f -mtime +$RETENTION_DAYS -delete
+
+# Log
+echo "[$DATE] Backup completed" >> $BACKUP_DIR/backup.log
+```
+
+```bash
+# Make executable
+chmod +x /opt/pos-backup/backup.sh
+
+# Add to crontab (daily at 2 AM)
+crontab -e
+```
+
+Add:
+```
+0 2 * * * /opt/pos-backup/backup.sh
+```
+
+### Restore from Backup
+
+```bash
+# Stop services
 docker compose down
 
-# Stop, remove, and delete data (DANGEROUS!)
-docker compose down -v
+# Restore database
+gunzip < /opt/pos-backups/database_20250101_020000.sql.gz | \
+  docker exec -i pos-postgres psql -U pos_admin -d pos_system
+
+# Restore MinIO
+docker exec -i pos-minio tar xzf - -C / < /opt/pos-backups/minio_20250101_020000.tar.gz
+
+# Restore config
+tar xzf /opt/pos-backups/config_20250101_020000.tar.gz
+
+# Restart
+docker compose up -d
 ```
+
+### Off-site Backup (Recommended)
+
+```bash
+# Install rclone
+curl https://rclone.org/install.sh | sudo bash
+
+# Configure (e.g., for AWS S3)
+rclone config
+
+# Sync backups
+rclone sync /opt/pos-backups remote:pos-backups --progress
+```
+
+Add to backup script:
+```bash
+# At end of backup.sh
+rclone sync $BACKUP_DIR remote:pos-backups --progress
+```
+
+---
+
+## 📊 Monitoring
+
+### Setup Prometheus & Grafana (Optional)
+
+Add to `docker-compose.yml`:
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+    networks:
+      - pos-network
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - pos-network
+
+volumes:
+  prometheus_data:
+  grafana_data:
+```
+
+### Basic Monitoring Script
+
+Create `/opt/pos-monitoring/monitor.sh`:
+
+```bash
+#!/bin/bash
+LOG_FILE="/var/log/pos-monitor.log"
+
+# Check services
+if ! docker compose ps | grep -q "Up"; then
+  echo "$(date): Service down!" >> $LOG_FILE
+  # Send alert (email, Slack, etc.)
+fi
+
+# Check disk space
+DISK_USAGE=$(df -h / | tail -1 | awk '{print $5}' | sed 's/%//')
+if [ $DISK_USAGE -gt 80 ]; then
+  echo "$(date): Disk usage high: $DISK_USAGE%" >> $LOG_FILE
+fi
+
+# Check database size
+DB_SIZE=$(docker exec pos-postgres psql -U pos_admin -d pos_system -t -c "SELECT pg_database_size('pos_system');" | tr -d ' ')
+if [ $DB_SIZE -gt 10000000000 ]; then  # 10GB
+  echo "$(date): Database size large: $DB_SIZE bytes" >> $LOG_FILE
+fi
+```
+
+```bash
+chmod +x /opt/pos-monitoring/monitor.sh
+
+# Run every 5 minutes
+crontab -e
+```
+Add:
+```
+*/5 * * * * /opt/pos-monitoring/monitor.sh
+```
+
+---
+
+## 🔧 Maintenance
+
+### Regular Tasks
+
+**Daily:**
+- Monitor logs: `docker compose logs --tail=100`
+- Check disk space: `df -h`
+- Verify backups completed
+
+**Weekly:**
+- Review error logs
+- Update system packages: `sudo apt update && sudo apt upgrade`
+- Vacuum database: `docker exec pos-postgres psql -U pos_admin -d pos_system -c "VACUUM ANALYZE;"`
+
+**Monthly:**
+- Update Docker images
+- Review and rotate logs
+- Test backup restoration
+- Security audit
 
 ### Update System
 
 ```bash
-# Pull latest code
-git pull
+# Backup first!
+./opt/pos-backup/backup.sh
 
-# Rebuild
-docker compose down
+# Pull latest changes
+git pull origin main
+
+# Rebuild images
 docker compose build --no-cache
+
+# Apply database migrations (if any)
+docker exec -i pos-postgres psql -U pos_admin -d pos_system < database/migrations/latest.sql
+
+# Restart services
 docker compose up -d
 
-# Check logs
-docker compose logs -f
+# Verify
+./scripts/test-deployment.sh
 ```
 
-### Database Maintenance
-
-```bash
-# Connect to database
-docker exec -it pos-postgres psql -U pos_admin -d pos_system
-
-# Vacuum (clean up)
-VACUUM ANALYZE;
-
-# Check database size
-SELECT pg_size_pretty(pg_database_size('pos_system'));
-
-# Check table sizes
-SELECT
-  schemaname,
-  tablename,
-  pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
-FROM pg_tables
-WHERE schemaname = 'public'
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
-```
-
-### Monitor Resources
-
-```bash
-# Container stats
-docker stats
-
-# Disk usage
-docker system df
-
-# Clean up unused data
-docker system prune -a
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Issue: Container won't start
-
-**Check logs:**
-
-```bash
-docker compose logs backend
-docker compose logs postgres
-```
-
-**Solution:**
-
-```bash
-# Remove and recreate
-docker compose down
-docker compose up -d
-
-# If still failing, rebuild
-docker compose build --no-cache
-docker compose up -d
-```
-
-### Issue: Database connection error
-
-**Check postgres:**
-
-```bash
-# Is it running?
-docker compose ps postgres
-
-# Check logs
-docker compose logs postgres
-
-# Test connection
-docker exec pos-postgres pg_isready -U pos_admin
-```
-
-**Solution:**
-
-```bash
-# Restart database
-docker compose restart postgres
-
-# Wait 10 seconds
-sleep 10
-
-# Restart backend
-docker compose restart backend
-```
-
-### Issue: Out of disk space
-
-**Check usage:**
-
-```bash
-df -h
-docker system df
-```
-
-**Clean up:**
-
-```bash
-# Remove old images
-docker image prune -a
-
-# Remove old volumes (BE CAREFUL!)
-docker volume prune
-
-# Remove unused everything
-docker system prune -a --volumes
-```
-
-### Issue: Cloudflare Tunnel not working
-
-**Check tunnel status:**
+### Log Management
 
 ```bash
 # View logs
-docker compose logs cloudflared
+docker compose logs -f
 
-# Check tunnel
-cloudflared tunnel info pos-system
-
-# Test DNS
-nslookup pos.yourdomain.com
+# Limit log size in docker-compose.yml:
+services:
+  backend:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 ```
 
-**Solution:**
+---
+
+## 📈 Scaling
+
+### Vertical Scaling (Single Server)
 
 ```bash
-# Restart cloudflared
-docker compose restart cloudflared
+# Increase resources in docker-compose.yml:
+services:
+  backend:
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
 
-# Or recreate tunnel
-cloudflared tunnel delete pos-system
-cloudflared tunnel create pos-system
-# Update cloudflared-config.yml with new tunnel ID
-docker compose down
-docker compose up -d
+  postgres:
+    deploy:
+      resources:
+        limits:
+          memory: 4G
 ```
 
-### Issue: Can't access from internet
+### Horizontal Scaling (Multiple Servers)
 
-**Checklist:**
+For high traffic, consider:
 
-1. ✅ Cloudflare Tunnel running?
-   ```bash
-   docker compose ps cloudflared
-   ```
+1. **Load Balancer:** HAProxy or Nginx
+2. **Multiple Backend Instances:** Scale backend containers
+3. **Database Replication:** PostgreSQL primary/replica
+4. **Redis Cluster:** For distributed caching
+5. **Separate Storage:** External MinIO or S3
 
-2. ✅ DNS records configured?
-   ```bash
-   nslookup pos.yourdomain.com
-   ```
-
-3. ✅ Backend responding?
-   ```bash
-   curl http://localhost:3001/health
-   ```
-
-4. ✅ Frontend responding?
-   ```bash
-   curl http://localhost:3000
-   ```
-
----
-
-## 📈 Performance Tuning
-
-### PostgreSQL Optimization
-
-```bash
-# Edit postgresql.conf
-docker exec -it pos-postgres bash
-vi /var/lib/postgresql/data/postgresql.conf
+Architecture:
 ```
-
-**Recommended settings:**
-
-```conf
-# For 4GB RAM server
-shared_buffers = 1GB
-effective_cache_size = 3GB
-maintenance_work_mem = 256MB
-checkpoint_completion_target = 0.9
-wal_buffers = 16MB
-default_statistics_target = 100
-random_page_cost = 1.1
-effective_io_concurrency = 200
-work_mem = 5MB
-min_wal_size = 1GB
-max_wal_size = 4GB
-max_worker_processes = 4
-max_parallel_workers_per_gather = 2
-max_parallel_workers = 4
-```
-
-### Redis Optimization
-
-```bash
-# Edit redis.conf in docker-compose.yml
-command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
-```
-
-### MinIO Optimization
-
-```bash
-# Increase cache
-environment:
-  MINIO_CACHE_SIZE: 4GB
+            Load Balancer
+           /      |      \
+    Backend1  Backend2  Backend3
+           \      |      /
+         PostgreSQL Primary
+              |
+         Replica (Read-only)
 ```
 
 ---
 
-## 💰 Cost Estimate
+## 📚 Additional Resources
 
-### VPS Options
-
-**DigitalOcean:**
-- 2GB RAM: $12/month
-- 4GB RAM: $24/month
-- 8GB RAM: $48/month
-
-**Linode:**
-- 2GB RAM: $12/month
-- 4GB RAM: $24/month
-- 8GB RAM: $48/month
-
-**Hetzner (Cheapest):**
-- 2GB RAM: €4.5/month (~$5)
-- 4GB RAM: €7/month (~$8)
-- 8GB RAM: €14/month (~$15)
-
-**Cloudflare:**
-- Tunnel: Free
-- DNS: Free
-- CDN: Free
-
-**Total: $5-50/month** (depending on requirements)
+- [GETTING_STARTED.md](./GETTING_STARTED.md) - Initial setup
+- [README.md](./README.md) - Overview
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - Technical architecture
 
 ---
 
-## ✅ Post-Deployment Checklist
-
-**Security:**
-- [ ] Changed admin password
-- [ ] Updated .env passwords
-- [ ] Configured firewall (ufw)
-- [ ] Setup automatic updates
-- [ ] Configured backups
-
-**Monitoring:**
-- [ ] Tested all services
-- [ ] Verified database connection
-- [ ] Checked container logs
-- [ ] Tested public URLs
-- [ ] Confirmed HTTPS working
-
-**Backups:**
-- [ ] Manual database backup tested
-- [ ] Automated backup cron configured
-- [ ] Backup restoration tested
-- [ ] Off-site backup configured
-
-**Performance:**
-- [ ] Load time acceptable
-- [ ] Database queries fast
-- [ ] Images loading properly
-- [ ] No errors in logs
-
----
-
-## 🎉 Success!
-
-Your POS system is now self-hosted and accessible via Cloudflare Tunnel!
-
-**What you have:**
-- ✅ Full control over your data
-- ✅ No vendor lock-in
-- ✅ Secure access via Cloudflare
-- ✅ Professional infrastructure
-- ✅ Scalable and maintainable
-
-**Next steps:**
-1. Customize branding
-2. Add users
-3. Import products
-4. Train staff
-5. Start selling!
-
----
-
-## 📞 Support
-
-**Documentation:**
-- README.md - Overview
-- GETTING_STARTED.md - Quick start
-- ARCHITECTURE.md - Technical details
-- READY_TO_DEPLOY.md - Cloud deployment
-
-**Community:**
-- GitHub Issues
-- Discord server
-- Email support
-
-**Useful Links:**
-- [Docker Docs](https://docs.docker.com/)
-- [PostgreSQL Docs](https://www.postgresql.org/docs/)
-- [Cloudflare Tunnel Docs](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/)
-
----
-
-**Status: ✅ COMPLETE - Ready for Production Self-Hosting**
+**Status:** ✅ Production-Ready Self-Hosting Guide
