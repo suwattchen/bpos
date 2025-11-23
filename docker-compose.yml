@@ -12,7 +12,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init:/docker-entrypoint-initdb.d
     ports:
-      - "5432:5432"
+      - "5433:5432" # Changed from 5432
     networks:
       - pos-network
     healthcheck:
@@ -29,8 +29,7 @@ services:
     command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    # ports: - "6379:6379" # Port removed, not needed externally
     networks:
       - pos-network
     healthcheck:
@@ -51,8 +50,8 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9002:9000" # Changed from 9000
+      - "9003:9001" # Changed from 9001
     networks:
       - pos-network
     healthcheck:
@@ -97,8 +96,7 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    ports:
-      - "3001:3001"
+    # ports: - "3001:3001" # Port removed, handled by NPM
     networks:
       - pos-network
     volumes:
@@ -116,13 +114,12 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
+        VITE_API_URL: ${VITE_API_URL:-/api} # Changed to relative path for proxy
     container_name: pos-frontend
     restart: unless-stopped
     depends_on:
       - backend
-    ports:
-      - "3000:80"
+    # ports: - "3000:80" # Port removed, handled by NPM
     networks:
       - pos-network
     healthcheck:
@@ -130,45 +127,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # Nginx Reverse Proxy (Optional)
-  nginx:
-    image: nginx:alpine
-    container_name: pos-nginx
+      
+  # Nginx Proxy Manager
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: pos-npm
     restart: unless-stopped
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
     ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - frontend
-      - backend
-    networks:
-      - pos-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Cloudflare Tunnel (Optional - for exposing to internet)
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: pos-cloudflared
-    restart: unless-stopped
-    command: tunnel --config /etc/cloudflared/config.yml run
+      - '80:80'
+      - '443:443'
+      - '81:81'
     volumes:
-      - ./cloudflared-config.yml:/etc/cloudflared/config.yml:ro
-      - ~/.cloudflared:/root/.cloudflared:ro
-    depends_on:
-      - frontend
-      - backend
+      - ./data/npm:/data
+      - ./data/letsencrypt:/etc/letsencrypt
     networks:
       - pos-network
-    environment:
-      - TUNNEL_METRICS=0.0.0.0:9126
 
 volumes:
   postgres_data:
