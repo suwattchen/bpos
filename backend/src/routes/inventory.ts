@@ -204,4 +204,46 @@ router.post('/set', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Update inventory (alias for set)
+router.post('/update', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { tenantId } = req.user!;
+    const { product_id, quantity, location = 'main' } = req.body;
+
+    if (!product_id) {
+      throw new AppError('Product ID is required', 400);
+    }
+
+    if (quantity === undefined || quantity === null || quantity < 0) {
+      throw new AppError('Valid quantity is required', 400);
+    }
+
+    const productCheck = await db.query(
+      'SELECT id FROM products WHERE id = $1 AND tenant_id = $2',
+      [product_id, tenantId]
+    );
+
+    if (productCheck.rows.length === 0) {
+      throw new AppError('Product not found', 404);
+    }
+
+    const result = await db.query(
+      `INSERT INTO inventory (tenant_id, product_id, location, quantity, last_updated)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (tenant_id, product_id, location)
+       DO UPDATE SET
+         quantity = $4,
+         last_updated = NOW()
+       RETURNING *`,
+      [tenantId, product_id, location, quantity]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    console.error('Update inventory error:', error);
+    throw new AppError('Failed to update inventory', 500);
+  }
+});
+
 export default router;

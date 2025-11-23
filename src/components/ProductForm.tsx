@@ -1,12 +1,22 @@
 import { useState, FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { ImageUpload } from './ImageUpload';
-import { Database } from '../lib/database.types';
 
-type ProductInsert = Database['public']['Tables']['products']['Insert'];
+interface ProductData {
+  sku: string;
+  barcode?: string | null;
+  name: string;
+  description?: string;
+  category_id?: string | null;
+  cost_price: number;
+  selling_price: number;
+  tax_rate: number;
+  is_active: boolean;
+  image_url?: string | null;
+}
 
 interface ProductFormProps {
-  onSubmit: (product: Omit<ProductInsert, 'tenant_id'>, imageBlob?: Blob) => Promise<void>;
+  onSubmit: (product: ProductData, imageBlob?: Blob) => Promise<void>;
   onCancel: () => void;
   initialData?: Partial<ProductInsert>;
   categories: Array<{ id: string; name: string }>;

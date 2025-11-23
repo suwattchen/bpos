@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { api } from '../lib/api';
+
+interface User {
+  id: string;
+  email: string;
+}
 
 interface TenantUser {
   id: string;
@@ -11,8 +15,9 @@ interface TenantUser {
 
 interface AuthContextType {
   user: User | null;
-  session: Session | null;
   tenantUser: TenantUser | null;
+  tenantId: string | null;
+  role: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
@@ -23,82 +28,88 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [tenantUser, setTenantUser] = useState<TenantUser | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchTenantUser(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          await fetchTenantUser(session.user.id);
-        } else {
-          setTenantUser(null);
-          setLoading(false);
-        }
-      })();
-    });
-
-    return () => subscription.unsubscribe();
+    const token = api.getToken();
+    if (token) {
+      loadUser();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
-  const fetchTenantUser = async (userId: string) => {
+  const loadUser = async () => {
     try {
-      const { data, error } = await supabase
-        .from('tenant_users')
-        .select('id, tenant_id, role, is_active')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (error) throw error;
-      setTenantUser(data);
+      const response = await api.auth.me();
+      if (response.data?.user) {
+        setUser(response.data.user);
+        setTenantUser(response.data.user.tenantUser);
+        setTenantId(response.data.user.tenantId);
+        setRole(response.data.user.role);
+      } else {
+        api.setToken(null);
+      }
     } catch (error) {
-      console.error('Error fetching tenant user:', error);
-      setTenantUser(null);
+      console.error('Error loading user:', error);
+      api.setToken(null);
     } finally {
       setLoading(false);
     }
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) throw error;
+    const response = await api.auth.login(email, password);
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    if (response.data) {
+      setUser(response.data.user);
+      setTenantId(response.data.tenantId);
+      setRole(response.data.role);
+      setTenantUser({
+        id: response.data.user.id,
+        tenant_id: response.data.tenantId,
+        role: response.data.role as any,
+        is_active: true,
+      });
+    }
   };
 
   const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-    if (error) throw error;
+    const response = await api.auth.signup(email, password);
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    if (response.data) {
+      setUser(response.data.user);
+      setTenantId(response.data.tenantId);
+      setRole(response.data.role);
+      setTenantUser({
+        id: response.data.user.id,
+        tenant_id: response.data.tenantId,
+        role: response.data.role as any,
+        is_active: true,
+      });
+    }
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    await api.auth.logout();
+    setUser(null);
     setTenantUser(null);
+    setTenantId(null);
+    setRole(null);
   };
 
   const value = {
     user,
-    session,
     tenantUser,
+    tenantId,
+    role,
     loading,
     signIn,
     signUp,
@@ -108,7 +119,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

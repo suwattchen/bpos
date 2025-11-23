@@ -4,14 +4,36 @@ import { LoginForm } from './components/LoginForm';
 import { Dashboard } from './components/Dashboard';
 import { POSInterface, CheckoutTotals } from './components/POSInterface';
 import { ProductForm } from './components/ProductForm';
-import { supabase } from './lib/supabase';
-import { Database } from './lib/database.types';
+import { api } from './lib/api';
 import { registerServiceWorker, addOnlineStatusListener, checkOnlineStatus } from './utils/pwa';
 import { Plus, Package } from 'lucide-react';
 import { EmptyState } from './components/EmptyState';
 
-type Product = Database['public']['Tables']['products']['Row'];
-type Category = Database['public']['Tables']['categories']['Row'];
+interface Product {
+  id: string;
+  tenant_id: string;
+  name: string;
+  sku: string;
+  barcode?: string;
+  category_id?: string;
+  cost_price: number;
+  selling_price: number;
+  tax_rate: number;
+  description?: string;
+  image_url?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface Category {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface CartItem {
   product: Product;
@@ -22,7 +44,7 @@ interface CartItem {
 }
 
 function AppContent() {
-  const { user, tenantUser, loading: authLoading } = useAuth();
+  const { user, tenantId, loading: authLoading } = useAuth();
   const [currentPage, setCurrentPage] = useState('pos');
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -37,117 +59,92 @@ function AppContent() {
   }, []);
 
   const loadData = useCallback(async () => {
-    if (!tenantUser?.tenant_id) return;
+    if (!tenantId) return;
 
     try {
       const [productsRes, categoriesRes] = await Promise.all([
-        supabase
-          .from('products')
-          .select('*')
-          .eq('tenant_id', tenantUser.tenant_id)
-          .order('name'),
-        supabase
-          .from('categories')
-          .select('*')
-          .eq('tenant_id', tenantUser.tenant_id)
-          .order('name'),
+        api.products.list(),
+        api.categories.list(),
       ]);
 
-      if (productsRes.error) throw productsRes.error;
-      if (categoriesRes.error) throw categoriesRes.error;
+      if (productsRes.error) throw new Error(productsRes.error);
+      if (categoriesRes.error) throw new Error(categoriesRes.error);
 
-      setProducts((productsRes.data ?? []) as Product[]);
-      setCategories((categoriesRes.data ?? []) as Category[]);
+      setProducts(productsRes.data || []);
+      setCategories(categoriesRes.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
       alert('Failed to load data. Please refresh the page.');
     } finally {
       setLoading(false);
     }
-  }, [tenantUser]);
+  }, [tenantId]);
 
   useEffect(() => {
-    if (tenantUser?.tenant_id) {
+    if (tenantId) {
       loadData();
     }
-  }, [tenantUser, loadData]);
+  }, [tenantId, loadData]);
 
   const handleCheckout = async (items: CartItem[], totals: CheckoutTotals) => {
-    if (!tenantUser?.tenant_id || !user) {
+    if (!tenantId || !user) {
       throw new Error('User not authenticated');
     }
 
     const transactionNumber = `TXN-${Date.now()}`;
 
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert({
-        tenant_id: tenantUser.tenant_id,
-        transaction_number: transactionNumber,
-        cashier_id: user.id,
-        subtotal: totals.subtotal,
-        tax_amount: totals.tax,
-        discount_amount: totals.discount,
-        total_amount: totals.total,
-        payment_method: 'cash',
-        payment_status: 'completed',
-      })
-      .select()
-      .single<Database['public']['Tables']['transactions']['Row']>();
+    const transactionData = {
+      transaction_number: transactionNumber,
+      cashier_id: user.id,
+      subtotal: totals.subtotal,
+      tax_amount: totals.tax,
+      discount_amount: totals.discount,
+      total_amount: totals.total,
+      payment_method: 'cash',
+      payment_status: 'completed',
+      items: items.map((item) => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+        unit_price: item.product.selling_price,
+        tax_amount: item.tax,
+        discount_amount: 0,
+        subtotal: item.total,
+      })),
+    };
 
-    if (txError) throw txError;
-
-    const transactionItems = items.map((item) => ({
-      tenant_id: tenantUser.tenant_id,
-      transaction_id: transaction.id,
-      product_id: item.product.id,
-      quantity: item.quantity,
-      unit_price: item.product.selling_price,
-      tax_amount: item.tax,
-      discount_amount: 0,
-      subtotal: item.total,
-    }));
-
-    const { error: itemsError } = await supabase
-      .from('transaction_items')
-      .insert(transactionItems);
-
-    if (itemsError) throw itemsError;
+    const response = await api.transactions.create(transactionData);
+    if (response.error) {
+      throw new Error(response.error);
+    }
 
     alert(`Transaction ${transactionNumber} completed successfully!`);
   };
 
   const handleAddProduct = async (
-    productData: Omit<Database['public']['Tables']['products']['Insert'], 'tenant_id'>,
+    productData: Partial<Product>,
     imageBlob?: Blob
   ) => {
-    if (!tenantUser?.tenant_id) {
+    if (!tenantId) {
       throw new Error('Tenant not found');
     }
 
     let imageUrl = productData.image_url;
 
     if (imageBlob) {
-      const fileName = `${tenantUser.tenant_id}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(fileName, imageBlob);
+      const file = new File([imageBlob], `product-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      const uploadResponse = await api.upload.image(file);
 
-      if (!uploadError) {
-        const { data: urlData } = supabase.storage
-          .from('product-images')
-          .getPublicUrl(fileName);
-        imageUrl = urlData.publicUrl;
+      if (!uploadResponse.error && uploadResponse.data?.url) {
+        imageUrl = uploadResponse.data.url;
       }
     }
 
-    const { error } = await supabase.from('products').insert({
+    const response = await api.products.create({
       ...productData,
-      tenant_id: tenantUser.tenant_id,
       image_url: imageUrl,
     });
 
-    if (error) throw error;
+    if (response.error) throw new Error(response.error);
 
     await loadData();
     setShowProductForm(false);
@@ -164,7 +161,7 @@ function AppContent() {
     );
   }
 
-  if (!user || !tenantUser) {
+  if (!user || !tenantId) {
     return <LoginForm />;
   }
 
@@ -185,7 +182,7 @@ function AppContent() {
         return (
           <POSInterface
             products={products}
-            tenantId={tenantUser.tenant_id}
+            tenantId={tenantId}
             onCheckout={handleCheckout}
           />
         );

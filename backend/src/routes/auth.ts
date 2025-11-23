@@ -144,8 +144,20 @@ router.post('/login', async (req: Request, res: Response) => {
 
 // Get current user
 router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
+  const userData = req.user!;
   res.json({
-    user: req.user,
+    user: {
+      id: userData.userId,
+      email: userData.email,
+      tenantId: userData.tenantId,
+      role: userData.role,
+      tenantUser: {
+        id: userData.userId,
+        tenant_id: userData.tenantId,
+        role: userData.role,
+        is_active: true,
+      },
+    },
   });
 });
 

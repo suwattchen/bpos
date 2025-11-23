@@ -1,7 +1,18 @@
-import { Database } from '../lib/database.types';
+interface Transaction {
+  id: string;
+  transaction_number: string;
+  created_at: string;
+  total_amount: number;
+  tax_amount: number;
+  subtotal: number;
+  discount_amount: number;
+  payment_method: string;
+}
 
-type Transaction = Database['public']['Tables']['transactions']['Row'];
-type Product = Database['public']['Tables']['products']['Row'];
+interface Product {
+  name: string;
+  sku: string;
+}
 
 interface ReceiptData {
   transaction: Transaction;

@@ -1,10 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
-import { Database } from '../lib/database.types';
+import { api } from '../lib/api';
 
-type Inventory = Database['public']['Tables']['inventory']['Row'];
+interface Inventory {
+  id: string;
+  tenant_id: string;
+  product_id: string;
+  location: string;
+  quantity: number;
+  last_updated: string;
+}
 
-export function useInventory(tenantId: string | undefined) {
+export function useInventory(tenantId: string | undefined | null) {
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,13 +22,11 @@ export function useInventory(tenantId: string | undefined) {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase
-        .from('inventory')
-        .select('*')
-        .eq('tenant_id', tenantId);
-
-      if (fetchError) throw fetchError;
-      setInventory((data ?? []) as Inventory[]);
+      const response = await api.inventory.list();
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      setInventory(response.data || []);
     } catch (err) {
       console.error('Error loading inventory:', err);
       setError(err instanceof Error ? err.message : 'Failed to load inventory');
@@ -50,32 +54,14 @@ export function useInventory(tenantId: string | undefined) {
   ): Promise<void> => {
     if (!tenantId) throw new Error('Tenant ID required');
 
-    const existing = inventory.find(
-      (inv) => inv.product_id === productId && inv.location === location
-    );
+    const response = await api.inventory.update({
+      product_id: productId,
+      location,
+      quantity,
+    });
 
-    if (existing) {
-      const { error } = await supabase
-        .from('inventory')
-        .update({
-          quantity,
-          last_updated: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-
-      if (error) throw error;
-    } else {
-      const { error } = await supabase
-        .from('inventory')
-        .insert({
-          tenant_id: tenantId,
-          product_id: productId,
-          location,
-          quantity,
-          last_updated: new Date().toISOString(),
-        });
-
-      if (error) throw error;
+    if (response.error) {
+      throw new Error(response.error);
     }
 
     await loadInventory();

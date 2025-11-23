@@ -1,9 +1,23 @@
 import { useState } from 'react';
 import { Search, Minus, Plus, Trash2, ShoppingCart, CreditCard, Scan, AlertTriangle } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
-import { Database } from '../lib/database.types';
 
-type Product = Database['public']['Tables']['products']['Row'];
+interface Product {
+  id: string;
+  tenant_id: string;
+  name: string;
+  sku: string;
+  barcode?: string;
+  category_id?: string;
+  cost_price: number;
+  selling_price: number;
+  tax_rate: number;
+  description?: string;
+  image_url?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 interface CartItem {
   product: Product;
