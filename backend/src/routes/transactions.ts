@@ -31,6 +31,41 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Get sales report (MUST be before /:id)
+router.get('/reports/sales', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { tenantId } = req.user!;
+    const { start_date, end_date, group_by = 'day' } = req.query;
+
+    let dateFilter = '';
+    const params: any[] = [tenantId];
+
+    if (start_date && end_date) {
+      dateFilter = 'AND t.created_at BETWEEN $2 AND $3';
+      params.push(start_date, end_date);
+    }
+
+    const result = await db.query(
+      `SELECT
+        DATE_TRUNC($${params.length + 1}, t.created_at) as period,
+        COUNT(*) as transaction_count,
+        SUM(t.total_amount) as total_revenue,
+        SUM(t.tax_amount) as total_tax,
+        AVG(t.total_amount) as avg_transaction
+      FROM transactions t
+      WHERE t.tenant_id = $1 ${dateFilter}
+      GROUP BY period
+      ORDER BY period DESC`,
+      [...params, group_by]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Sales report error:', error);
+    throw new AppError('Failed to generate sales report', 500);
+  }
+});
+
 // Get single transaction with items
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -198,48 +233,6 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (error instanceof AppError) throw error;
     console.error('Create transaction error:', error);
     throw new AppError('Failed to create transaction', 500);
-  }
-});
-
-// Get sales report
-router.get('/reports/sales', authenticate, async (req: AuthRequest, res: Response) => {
-  try {
-    const { tenantId } = req.user!;
-    const { start_date, end_date, group_by = 'day' } = req.query;
-
-    let dateFormat = 'YYYY-MM-DD';
-    if (group_by === 'month') dateFormat = 'YYYY-MM';
-    if (group_by === 'year') dateFormat = 'YYYY';
-
-    const result = await db.query(
-      `SELECT
-        TO_CHAR(created_at, $3) as period,
-        COUNT(*) as transaction_count,
-        SUM(total_amount) as total_sales,
-        SUM(subtotal) as total_subtotal,
-        SUM(tax_amount) as total_tax,
-        SUM(discount_amount) as total_discount,
-        AVG(total_amount) as average_sale
-      FROM transactions
-      WHERE tenant_id = $1
-        AND created_at >= $4
-        AND created_at < $5
-        AND status = 'completed'
-      GROUP BY period
-      ORDER BY period DESC`,
-      [
-        tenantId,
-        group_by,
-        dateFormat,
-        start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        end_date || new Date().toISOString(),
-      ]
-    );
-
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Get sales report error:', error);
-    throw new AppError('Failed to generate sales report', 500);
   }
 });
 

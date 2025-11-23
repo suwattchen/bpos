@@ -5,6 +5,32 @@ import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
 
+// Get low stock items (MUST be before /:productId)
+router.get('/alerts/low-stock', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { tenantId } = req.user!;
+    const threshold = parseInt(req.query.threshold as string) || 10;
+
+    const result = await db.query(
+      `SELECT
+        i.*,
+        p.name as product_name,
+        p.sku as product_sku,
+        p.selling_price
+      FROM inventory i
+      JOIN products p ON p.id = i.product_id
+      WHERE i.tenant_id = $1 AND i.quantity <= $2
+      ORDER BY i.quantity ASC`,
+      [tenantId, threshold]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get low stock error:', error);
+    throw new AppError('Failed to fetch low stock items', 500);
+  }
+});
+
 // Get all inventory for tenant
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -29,7 +55,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Get inventory for specific product
+// Get inventory for specific product (MUST be after specific paths)
 router.get('/:productId', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { tenantId } = req.user!;
@@ -61,32 +87,6 @@ router.get('/:productId', authenticate, async (req: AuthRequest, res: Response) 
   } catch (error) {
     console.error('Get product inventory error:', error);
     throw new AppError('Failed to fetch product inventory', 500);
-  }
-});
-
-// Get low stock items
-router.get('/alerts/low-stock', authenticate, async (req: AuthRequest, res: Response) => {
-  try {
-    const { tenantId } = req.user!;
-    const threshold = parseInt(req.query.threshold as string) || 10;
-
-    const result = await db.query(
-      `SELECT
-        i.*,
-        p.name as product_name,
-        p.sku as product_sku,
-        p.selling_price
-      FROM inventory i
-      JOIN products p ON p.id = i.product_id
-      WHERE i.tenant_id = $1 AND i.quantity <= $2
-      ORDER BY i.quantity ASC`,
-      [tenantId, threshold]
-    );
-
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Get low stock error:', error);
-    throw new AppError('Failed to fetch low stock items', 500);
   }
 });
 

@@ -88,7 +88,7 @@ class ApiClient {
 
   async uploadFile(endpoint: string, file: File): Promise<ApiResponse> {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('image', file);
 
     const headers: Record<string, string> = {};
     if (this.token) {
@@ -126,7 +126,7 @@ class ApiClient {
         tenantId: string;
         role: string;
         token: string;
-      }>('/api/auth/login', { email, password });
+      }>('/auth/login', { email, password });
 
       if (response.data?.token) {
         this.setToken(response.data.token);
@@ -141,7 +141,7 @@ class ApiClient {
         tenantId: string;
         role: string;
         token: string;
-      }>('/api/auth/signup', { email, password, name });
+      }>('/auth/signup', { email, password, name });
 
       if (response.data?.token) {
         this.setToken(response.data.token);
@@ -151,76 +151,76 @@ class ApiClient {
     },
 
     me: async () => {
-      return this.get<{ user: any }>('/api/auth/me');
+      return this.get<{ user: any }>('/auth/me');
     },
 
     logout: async () => {
-      const response = await this.post('/api/auth/logout');
+      const response = await this.post('/auth/logout');
       this.setToken(null);
       return response;
     },
   };
 
   products = {
-    list: () => this.get('/api/products'),
-    get: (id: string) => this.get(`/api/products/${id}`),
-    search: (query: string) => this.get(`/api/products/search/${query}`),
-    create: (data: any) => this.post('/api/products', data),
-    update: (id: string, data: any) => this.put(`/api/products/${id}`, data),
-    delete: (id: string) => this.delete(`/api/products/${id}`),
+    list: () => this.get('/products'),
+    get: (id: string) => this.get(`/products/${id}`),
+    search: (query: string) => this.get(`/products/search/${query}`),
+    create: (data: any) => this.post('/products', data),
+    update: (id: string, data: any) => this.put(`/products/${id}`, data),
+    delete: (id: string) => this.delete(`/products/${id}`),
   };
 
   inventory = {
-    list: () => this.get('/api/inventory'),
+    list: () => this.get('/inventory'),
     get: (productId: string, location?: string) =>
-      this.get(`/api/inventory/${productId}${location ? `?location=${location}` : ''}`),
+      this.get(`/inventory/${productId}${location ? `?location=${location}` : ''}`),
     update: (data: { product_id: string; location: string; quantity: number }) =>
-      this.post('/api/inventory/update', data),
+      this.post('/inventory/update', data),
     adjust: (data: { product_id: string; location: string; quantity_change: number; reason: string }) =>
-      this.post('/api/inventory/adjust', data),
+      this.post('/inventory/adjust', data),
   };
 
   categories = {
-    list: () => this.get('/api/categories'),
-    create: (data: any) => this.post('/api/categories', data),
-    update: (id: string, data: any) => this.put(`/api/categories/${id}`, data),
-    delete: (id: string) => this.delete(`/api/categories/${id}`),
+    list: () => this.get('/categories'),
+    create: (data: any) => this.post('/categories', data),
+    update: (id: string, data: any) => this.put(`/categories/${id}`, data),
+    delete: (id: string) => this.delete(`/categories/${id}`),
   };
 
   customers = {
-    list: () => this.get('/api/customers'),
-    get: (id: string) => this.get(`/api/customers/${id}`),
-    search: (query: string) => this.get(`/api/customers/search/${query}`),
-    create: (data: any) => this.post('/api/customers', data),
-    update: (id: string, data: any) => this.put(`/api/customers/${id}`, data),
+    list: () => this.get('/customers'),
+    get: (id: string) => this.get(`/customers/${id}`),
+    search: (query: string) => this.get(`/customers/search/${query}`),
+    create: (data: any) => this.post('/customers', data),
+    update: (id: string, data: any) => this.put(`/customers/${id}`, data),
   };
 
   transactions = {
-    create: (data: any) => this.post('/api/transactions', data),
+    create: (data: any) => this.post('/transactions', data),
     list: (params?: { startDate?: string; endDate?: string }) => {
       const query = new URLSearchParams(params as any).toString();
-      return this.get(`/api/transactions${query ? `?${query}` : ''}`);
+      return this.get(`/transactions${query ? `?${query}` : ''}`);
     },
-    get: (id: string) => this.get(`/api/transactions/${id}`),
+    get: (id: string) => this.get(`/transactions/${id}`),
   };
 
   sales = {
     summary: (params?: { startDate?: string; endDate?: string; groupBy?: string }) => {
       const query = new URLSearchParams(params as any).toString();
-      return this.get(`/api/sales/summary${query ? `?${query}` : ''}`);
+      return this.get(`/sales/summary${query ? `?${query}` : ''}`);
     },
     topProducts: (params?: { startDate?: string; endDate?: string; limit?: number }) => {
       const query = new URLSearchParams(params as any).toString();
-      return this.get(`/api/sales/top-products${query ? `?${query}` : ''}`);
+      return this.get(`/sales/top-products${query ? `?${query}` : ''}`);
     },
   };
 
   recommendations = {
-    get: (productId: string) => this.get(`/api/recommendations/${productId}`),
+    get: (productId: string) => this.get(`/recommendations/${productId}`),
   };
 
   upload = {
-    image: (file: File) => this.uploadFile('/api/upload/image', file),
+    image: (file: File) => this.uploadFile('/upload/product-image', file),
   };
 }
 
